@@ -1,0 +1,81 @@
+version: "2.1"
+
+services:
+  base_db:
+    container_name: base_db
+    image: "postgres:15.4-alpine3.17"
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    ports:
+      - "6543:5432"
+    volumes:
+      # - ./ext.sql:/docker-entrypoint-initdb.d/ext.sql
+      # - ./db.sql:/docker-entrypoint-initdb.d/db.sql
+      - ./dbdata:/var/lib/postgresql/data/:delegated
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d base_dev -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+
+  base_api:
+    container_name: base_api
+    build:
+      context: ../api
+      dockerfile: ../docker/dockerfiles/api
+    volumes:
+      - ../api:/code:delegated
+      - ./firebase:/firebase
+    ports:
+      - "4000:4000"
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+      - SECRET_KEY=${SECRET_KEY}
+      - DEBUG=${DEBUG}
+      - EMAIL_ENABLE=${EMAIL_ENABLE}
+
+      - APP_TITLE=${APP_TITLE}
+      - APP_DESCRTIPTION=%{APP_DESCRTIPTION}
+
+      - PORT=${PORT}
+      - PROTOCOL=${PROTOCOL}
+      - DOMAIN=${DOMAIN}
+
+      - DB_USER=${POSTGRES_USER}
+      - DB_PASSWORD=${POSTGRES_PASSWORD}
+      - DB_NAME=${POSTGRES_DB}
+      - DB_HOST=base_db
+      - DB_PORT=5432
+      - DB_TEST=base_test
+
+      - EMAIL_DOMAIN=${EMAIL_DOMAIN}
+      - EMAIL_HOST=${EMAIL_HOST}
+      - EMAIL_PORT=${EMAIL_PORT}
+      - EMAIL_HOST_USER=${EMAIL_HOST_USER}
+      - EMAIL_HOST_PASSWORD=${EMAIL_HOST_PASSWORD}
+      - EMAIL_USE_TLS=${EMAIL_USE_TLS}
+
+      - SAMPLE_PASSWORD=${SAMPLE_PASSWORD}
+    depends_on:
+      base_db:
+        condition: service_healthy
+    tty: ${DOCKER_TTY}
+    command: ${DOCKER_COMMAND}
+
+  base_nginx:
+    container_name: base_nginx
+    build:
+      context: ./
+      dockerfile: ./dockerfiles/nginx
+    restart: always
+    volumes:
+      - ./conf.d:/etc/nginx/conf.d
+      - ${SSL_PATH}:/resource/ssl
+      - ../api/public/:/resource/public
+    ports:
+      - "443:443"
+      - "8080:80"
+    depends_on:
+      - base_api
